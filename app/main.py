@@ -37,6 +37,7 @@ rate_limit_dict = defaultdict(lambda: {"count": 0, "reset_time": 0})
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting up application...")
+    db = None
     try:
         # Connect to MongoDB
         logger.info("Attempting to connect to MongoDB...")
@@ -45,6 +46,8 @@ async def lifespan(app: FastAPI):
             logger.error("Failed to connect to MongoDB. Application will start but database operations will fail.")
         else:
             logger.info("Successfully connected to MongoDB!")
+            # Store the database connection in the app state
+            app.state.db = db
     except Exception as e:
         logger.error(f"Error during startup: {str(e)}")
         logger.error("Application will start but database operations may fail.")
@@ -54,7 +57,9 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down application...")
     try:
-        await close_mongo_connection()
+        if db is not None:
+            await close_mongo_connection()
+            logger.info("MongoDB connection closed successfully.")
     except Exception as e:
         logger.error(f"Error during shutdown: {str(e)}")
     logger.info("Application shutdown complete.")
