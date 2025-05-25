@@ -4,6 +4,7 @@ services:
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    plan: free
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
@@ -14,4 +15,4 @@ services:
       - key: API_KEY
         sync: false
       - key: ALLOWED_ORIGINS
-        value: https://your-frontend-domain.com 
+        value: "*"  # For development, we'll allow all origins 
