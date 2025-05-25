@@ -11,23 +11,13 @@ from app.core.config import settings
 import os
 from dotenv import load_dotenv
 from fastapi.openapi.utils import get_openapi
-import logging
 import time
-import sys
 from collections import defaultdict
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    stream=sys.stdout
-)
-logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
 
-# CORS configuration - allows frontend applications on specified origins to interact with the API
+# CORS configuration
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
 # In-memory rate limit dictionary
@@ -36,35 +26,22 @@ rate_limit_dict = defaultdict(lambda: {"count": 0, "reset_time": 0})
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    logger.info("Starting up application...")
-    db = None
     try:
-        # Connect to MongoDB
-        logger.info("Attempting to connect to MongoDB...")
         db = await connect_to_mongo()
-        if db is None:
-            logger.error("Failed to connect to MongoDB. Application will start but database operations will fail.")
-        else:
-            logger.info("Successfully connected to MongoDB!")
-            # Store the database connection in the app state
+        if db is not None:
             app.state.db = db
-    except Exception as e:
-        logger.error(f"Error during startup: {str(e)}")
-        logger.error("Application will start but database operations may fail.")
+    except Exception:
+        pass
     
     yield
     
     # Shutdown
-    logger.info("Shutting down application...")
     try:
-        if db is not None:
-            await close_mongo_connection()
-            logger.info("MongoDB connection closed successfully.")
-    except Exception as e:
-        logger.error(f"Error during shutdown: {str(e)}")
-    logger.info("Application shutdown complete.")
+        await close_mongo_connection()
+    except Exception:
+        pass
 
-# Initialize FastAPI application with metadata and documentation URLs
+# Initialize FastAPI application
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="A CRUD API for managing student records",
@@ -80,7 +57,7 @@ app = FastAPI(
     ]
 )
 
-# Add custom openapi schema definition for correct security scheme display in docs
+# Add custom openapi schema definition
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -120,27 +97,20 @@ app.openapi = custom_openapi
 # Add rate limiting middleware
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    # Skip rate limiting for documentation endpoints
     if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
         return await call_next(request)
     
-    # Get client IP
     client_ip = request.client.host
-    
-    # Get current time
     current_time = time.time()
     
-    # Check if we need to reset the counter
     if current_time > rate_limit_dict[client_ip]["reset_time"]:
         rate_limit_dict[client_ip] = {
             "count": 0,
-            "reset_time": current_time + 60  # Reset after 1 minute
+            "reset_time": current_time + 60
         }
     
-    # Increment request count
     rate_limit_dict[client_ip]["count"] += 1
     
-    # Check if rate limit exceeded
     if rate_limit_dict[client_ip]["count"] > settings.REQUESTS_PER_MINUTE:
         return JSONResponse(
             status_code=429,
@@ -150,9 +120,7 @@ async def rate_limit_middleware(request: Request, call_next):
             }
         )
     
-    # Process request
-    response = await call_next(request)
-    return response
+    return await call_next(request)
 
 # Add security headers middleware
 @app.middleware("http")
@@ -167,20 +135,12 @@ async def add_security_headers(request: Request, call_next):
 # Add API key middleware
 @app.middleware("http")
 async def verify_api_key(request: Request, call_next):
-    # Skip API key verification for documentation endpoints and development
     if request.url.path in ["/docs", "/redoc", "/openapi.json"] or settings.DEBUG:
         return await call_next(request)
     
-    # Get API key from header
     api_key = request.headers.get("X-API-Key")
     
-    # Log the request details for debugging
-    logger.info(f"Request path: {request.url.path}")
-    logger.info(f"API Key provided: {'Yes' if api_key else 'No'}")
-    
-    # Verify API key
     if not api_key or api_key != settings.API_KEY:
-        logger.error(f"Invalid API key. Expected: {settings.API_KEY}, Got: {api_key}")
         raise HTTPException(
             status_code=401,
             detail="Invalid API key"
@@ -188,7 +148,7 @@ async def verify_api_key(request: Request, call_next):
     
     return await call_next(request)
 
-# Configure CORS middleware with allowed origins, methods, headers, etc.
+# Configure CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -199,7 +159,7 @@ app.add_middleware(
     max_age=3600,
 )
 
-# Global exception handler for custom AppError instances
+# Global exception handler
 @app.exception_handler(AppError)
 async def app_error_handler(request: Request, exc: AppError):
     error_detail = {
@@ -220,7 +180,7 @@ async def app_error_handler(request: Request, exc: AppError):
         headers=get_security_headers()
     )
 
-# Include authentication and student routers with their respective prefixes and dependencies
+# Include routers
 app.include_router(
     auth_router,
     prefix=settings.API_V1_PREFIX,
@@ -232,8 +192,7 @@ app.include_router(
     dependencies=[Depends(verify_api_key)]
 )
 
-# Root endpoint - redirects to API documentation
+# Root endpoint
 @app.get("/", tags=["Root"])
 async def read_root():
-    """Redirect to API documentation"""
     return RedirectResponse(url=f"{settings.API_V1_PREFIX}/docs")
