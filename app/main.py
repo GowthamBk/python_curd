@@ -142,15 +142,20 @@ async def add_security_headers(request: Request, call_next):
 # Add API key middleware
 @app.middleware("http")
 async def verify_api_key(request: Request, call_next):
-    # Skip API key verification for documentation endpoints
-    if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
+    # Skip API key verification for documentation endpoints and development
+    if request.url.path in ["/docs", "/redoc", "/openapi.json"] or settings.DEBUG:
         return await call_next(request)
     
     # Get API key from header
     api_key = request.headers.get("X-API-Key")
     
+    # Log the request details for debugging
+    logger.info(f"Request path: {request.url.path}")
+    logger.info(f"API Key provided: {'Yes' if api_key else 'No'}")
+    
     # Verify API key
     if not api_key or api_key != settings.API_KEY:
+        logger.error(f"Invalid API key. Expected: {settings.API_KEY}, Got: {api_key}")
         raise HTTPException(
             status_code=401,
             detail="Invalid API key"
