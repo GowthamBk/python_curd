@@ -3,14 +3,14 @@ services:
     name: student-management-api
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: cd /opt/render/project/src && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     plan: free
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: MONGODB_URI
         sync: false
-      - key: JWT_SECRET_KEY
+      - key: SECRET_KEY
         sync: false
       - key: API_KEY
         sync: false
