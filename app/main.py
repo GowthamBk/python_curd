@@ -74,6 +74,7 @@ app = FastAPI(
     redoc_url=f"{settings.API_V1_PREFIX}/redoc",
     lifespan=lifespan,
     servers=[
+        {"url": "https://student-management-api-dwse.onrender.com", "description": "Test Deployment Server"},
         {"url": "http://localhost:8000", "description": "Local Development Server"},
         {"url": "https://api.example.com", "description": "Production Server"}
     ]
