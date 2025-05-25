@@ -20,7 +20,7 @@ class Settings:
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
     
     # Database settings
-    MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+    MONGODB_URL = os.getenv("MONGODB_URL", "mongodb+srv://node_curd:node_curd@cluster0.ahupn.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
     MONGODB_DB = os.getenv("DATABASE_NAME", "student_db")
     
     # CORS settings
