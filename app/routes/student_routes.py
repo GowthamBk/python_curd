@@ -94,12 +94,11 @@ async def create_student(
         )
 
 # Endpoint to get a paginated list of students with optional search (requires authentication)
-@router.get("/", response_model=StudentListResponse)
+@router.get("/", response_model=StudentListResponse, dependencies=[Depends(get_current_user)])
 async def get_students(
-    page: int = Query(1, ge=1, description="Page number"), # Query parameter for page number
-    page_size: int = Query(10, ge=1, le=100, description="Number of items per page"), # Query parameter for page size
-    search: str = Query(None, description="Search term for name or email"), # Optional query parameter for search
-    current_user: dict = Depends(get_current_user) # Dependency to get authenticated user
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(10, ge=1, le=100, description="Number of items per page"),
+    search: str = Query(None, description="Search term for name or email")
 ):
     """
     Get a paginated list of students with optional search.
@@ -108,7 +107,6 @@ async def get_students(
         page (int): Page number (starts from 1)
         page_size (int): Number of items per page (1-100)
         search (str, optional): Search term for name or email
-        current_user (dict): Current authenticated user
         
     Returns:
         StudentListResponse: Paginated list of students with metadata
