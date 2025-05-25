@@ -4,9 +4,14 @@ import os
 from dotenv import load_dotenv
 import logging
 import traceback
+import sys
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
+)
 logger = logging.getLogger(__name__)
 
 # Load environment variables for database configuration
@@ -42,7 +47,13 @@ async def connect_to_mongo():
         logger.info(f"Connection URL: {MONGODB_URL}")
         logger.info(f"Database Name: {DATABASE_NAME}")
         
-        client = AsyncIOMotorClient(MONGODB_URL)
+        # Create client with explicit serverSelectionTimeoutMS
+        client = AsyncIOMotorClient(
+            MONGODB_URL,
+            serverSelectionTimeoutMS=5000,  # 5 second timeout
+            connectTimeoutMS=5000,
+            socketTimeoutMS=5000
+        )
         
         # Access the specified database
         db = client[DATABASE_NAME]
@@ -56,7 +67,9 @@ async def connect_to_mongo():
         error_msg = f"Error connecting to MongoDB: {str(e)}\n{traceback.format_exc()}"
         logger.error(error_msg)
         logger.error(f"Connection details - URL: {MONGODB_URL}, Database: {DATABASE_NAME}")
-        raise Exception(error_msg)
+        # Don't raise the exception, just log it
+        logger.error("Application will continue without database connection")
+        return None
 
 async def close_mongo_connection():
     """Close database connection."""
@@ -68,7 +81,6 @@ async def close_mongo_connection():
     except Exception as e:
         error_msg = f"Error closing MongoDB connection: {str(e)}\n{traceback.format_exc()}"
         logger.error(error_msg)
-        raise Exception(error_msg)
 
 async def get_db():
     """Get database instance."""
@@ -81,4 +93,4 @@ async def get_db():
     except Exception as e:
         error_msg = f"Error getting database instance: {str(e)}\n{traceback.format_exc()}"
         logger.error(error_msg)
-        raise Exception(error_msg)
+        return None
