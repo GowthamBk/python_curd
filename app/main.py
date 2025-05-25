@@ -1,67 +1,54 @@
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from contextlib import asynccontextmanager
 from app.routes.student_routes import router as student_router
 from app.routes.auth_routes import router as auth_router
-from app.utils.database import connect_to_mongo, close_mongo_connection, get_db
+from app.utils.database import connect_to_mongo, close_mongo_connection
 from app.utils.error_handlers import AppError
 from app.utils.security import verify_api_key, get_security_headers
-from app.core.config import settings
+from app.utils.rate_limiter import rate_limit_middleware
 import os
 from dotenv import load_dotenv
 from fastapi.openapi.utils import get_openapi
-import time
-from collections import defaultdict
 
 # Load environment variables from .env file
 load_dotenv()
 
-# CORS configuration
+# CORS configuration - allows frontend applications on specified origins to interact with the API
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
-
-# In-memory rate limit dictionary
-rate_limit_dict = defaultdict(lambda: {"count": 0, "reset_time": 0})
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
-    try:
-        db = await connect_to_mongo()
-        if db is not None:
-            app.state.db = db
-    except Exception:
-        pass
-    
-    yield
-    
-    # Shutdown
-    try:
-        await close_mongo_connection()
-    except Exception:
-        pass
+    # Application startup event: connect to the database
+    await connect_to_mongo()
+    yield # Application runs
+    # Application shutdown event: close the database connection
+    await close_mongo_connection()
 
-# Initialize FastAPI application
+# Initialize FastAPI application with metadata and documentation URLs
 app = FastAPI(
-    title=settings.PROJECT_NAME,
+    title="Student Management API",
     description="A CRUD API for managing student records",
     version="1.0.0",
-    openapi_url=f"{settings.API_V1_PREFIX}/openapi.json",
-    docs_url=f"{settings.API_V1_PREFIX}/docs",
-    redoc_url=f"{settings.API_V1_PREFIX}/redoc",
+    openapi_url="/api/v1/openapi.json",
+    docs_url="/api/v1/docs",
+    redoc_url="/api/v1/redoc",
     lifespan=lifespan,
     servers=[
         {"url": "https://student-management-api-dwse.onrender.com", "description": "Test Deployment Server"},
         {"url": "http://localhost:8000", "description": "Local Development Server"},
-        {"url": "https://api.example.com", "description": "Production Server"}
+        {"url": "https://api.example.com", "description": "Production Server"} # Example production server URL
     ]
 )
 
-# Add custom openapi schema definition
+# Add custom openapi schema definition for correct security scheme display in docs
 def custom_openapi():
+    # Check if schema is already generated
     if app.openapi_schema:
         return app.openapi_schema
     
+    # Generate default openapi schema
     openapi_schema = get_openapi(
         title=app.title,
         version=app.version,
@@ -71,128 +58,86 @@ def custom_openapi():
         servers=app.servers
     )
     
+    # Define security schemes explicitly for Swagger UI
     openapi_schema["components"]["securitySchemes"] = {
-        "OAuth2PasswordBearer": {
+        "OAuth2PasswordBearer": { # Security scheme for JWT authentication
             "type": "oauth2",
             "flows": {
                 "password": {
-                    "tokenUrl": f"{settings.API_V1_PREFIX}/auth/login",
-                    "scopes": {}
+                    "tokenUrl": "/api/v1/auth/login", # Specify the correct login endpoint URL
+                    "scopes": {} # Define scopes if your application uses them
                 }
             }
         },
-        "APIKeyHeader": {
+        "APIKeyHeader": { # Security scheme for API Key authentication via header
             "type": "apiKey",
             "in": "header",
-            "name": "X-API-Key"
+            "name": "X-API-Key" # The name of the header for the API key
         }
     }
     
+    # Store the generated schema and return it
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
 # Assign the custom openapi generator
 app.openapi = custom_openapi
 
-# Add rate limiting middleware
-@app.middleware("http")
-async def rate_limit_middleware(request: Request, call_next):
-    if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
-        return await call_next(request)
-    
-    client_ip = request.client.host
-    current_time = time.time()
-    
-    if current_time > rate_limit_dict[client_ip]["reset_time"]:
-        rate_limit_dict[client_ip] = {
-            "count": 0,
-            "reset_time": current_time + 60
-        }
-    
-    rate_limit_dict[client_ip]["count"] += 1
-    
-    if rate_limit_dict[client_ip]["count"] > settings.REQUESTS_PER_MINUTE:
-        return JSONResponse(
-            status_code=429,
-            content={
-                "detail": "Too many requests. Please try again in a minute.",
-                "retry_after": int(rate_limit_dict[client_ip]["reset_time"] - current_time)
-            }
-        )
-    
-    return await call_next(request)
+# Add rate limiting middleware to control request rate from clients
+app.middleware("http")(rate_limit_middleware)
 
-# Add security headers middleware
-@app.middleware("http")
-async def add_security_headers(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    return response
-
-# Add API key middleware
-@app.middleware("http")
-async def verify_api_key(request: Request, call_next):
-    if request.url.path in ["/docs", "/redoc", "/openapi.json"] or settings.DEBUG:
-        return await call_next(request)
-    
-    api_key = request.headers.get("X-API-Key")
-    
-    if not api_key or api_key != settings.API_KEY:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid API key"
-        )
-    
-    return await call_next(request)
-
-# Configure CORS middleware
+# Configure CORS middleware with allowed origins, methods, headers, etc.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["*"],
-    expose_headers=["X-API-Key"],
-    max_age=3600,
+    allow_methods=["GET", "POST", "PUT", "DELETE"], # Allowed HTTP methods
+    allow_headers=["*"], # Allow all headers in requests
+    expose_headers=["X-API-Key"], # Expose custom headers in responses
+    max_age=3600, # Cache preflight requests for 1 hour
 )
 
-# Global exception handler
+# Global exception handler for custom AppError instances
 @app.exception_handler(AppError)
 async def app_error_handler(request: Request, exc: AppError):
+    # Structure the error detail for the response
     error_detail = {
-        "loc": ["body"],
+        "loc": ["body"], # Default location, can be overridden by error details
         "msg": exc.message,
-        "type": "validation_error"
+        "type": "validation_error" # Default type, can be adjusted based on error class
     }
     
+    # Add specific details from the AppError instance if available
     if exc.details:
         for key, value in exc.details.items():
             error_detail["loc"].append(key)
             if isinstance(value, (str, int, float, bool)):
                 error_detail["input"] = value
     
+    # Return a JSON response with the appropriate status code and headers
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": [error_detail]},
-        headers=get_security_headers()
+        headers=get_security_headers() # Include security headers in the response
     )
 
-# Include routers
+# Include authentication and student routers with their respective prefixes and dependencies
+# Authentication router: /api/v1/auth endpoints
 app.include_router(
     auth_router,
-    prefix=settings.API_V1_PREFIX,
+    prefix="/api/v1",
+    # Note: API key dependency is applied to specific auth routes, not globally here
 )
 
+# Student router: /api/v1/students endpoints requiring API key authentication
 app.include_router(
     student_router,
-    prefix=settings.API_V1_PREFIX,
-    dependencies=[Depends(verify_api_key)]
+    prefix="/api/v1",
+    dependencies=[Depends(verify_api_key)] # Apply API key dependency to student routes
 )
 
-# Root endpoint
+# Root endpoint - redirects to API documentation
 @app.get("/", tags=["Root"])
 async def read_root():
-    return RedirectResponse(url=f"{settings.API_V1_PREFIX}/docs")
+    """Redirect to API documentation"""
+    return RedirectResponse(url="/api/v1/docs")
