@@ -18,7 +18,7 @@ class Settings:
     MONGODB_DB = "student_db"
     
     # CORS settings
-    CORS_ORIGINS = ["http://localhost:3000", "http://localhost:8000", "http://127.0.0.1:8000"]
+    ALLOWED_ORIGINS = ["http://localhost:3000", "http://localhost:8000", "http://127.0.0.1:8000"]
     
     # Rate Limiting
     REQUESTS_PER_MINUTE = 60
