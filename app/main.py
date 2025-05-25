@@ -14,6 +14,7 @@ from fastapi.openapi.utils import get_openapi
 import logging
 import time
 import sys
+from collections import defaultdict
 
 # Configure logging
 logging.basicConfig(
@@ -28,6 +29,9 @@ load_dotenv()
 
 # CORS configuration - allows frontend applications on specified origins to interact with the API
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+
+# In-memory rate limit dictionary
+rate_limit_dict = defaultdict(lambda: {"count": 0, "reset_time": 0})
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -110,20 +114,35 @@ app.openapi = custom_openapi
 # Add rate limiting middleware
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
+    # Skip rate limiting for documentation endpoints
+    if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
+        return await call_next(request)
+    
     # Get client IP
     client_ip = request.client.host
     
-    # Check if IP is in rate limit dictionary
-    if client_ip in settings.RATE_LIMIT_DICT:
-        # Check if time difference is less than 1 minute
-        if time.time() - settings.RATE_LIMIT_DICT[client_ip] < 60:
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Too many requests. Please try again in a minute."}
-            )
+    # Get current time
+    current_time = time.time()
     
-    # Update rate limit dictionary
-    settings.RATE_LIMIT_DICT[client_ip] = time.time()
+    # Check if we need to reset the counter
+    if current_time > rate_limit_dict[client_ip]["reset_time"]:
+        rate_limit_dict[client_ip] = {
+            "count": 0,
+            "reset_time": current_time + 60  # Reset after 1 minute
+        }
+    
+    # Increment request count
+    rate_limit_dict[client_ip]["count"] += 1
+    
+    # Check if rate limit exceeded
+    if rate_limit_dict[client_ip]["count"] > settings.REQUESTS_PER_MINUTE:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": "Too many requests. Please try again in a minute.",
+                "retry_after": int(rate_limit_dict[client_ip]["reset_time"] - current_time)
+            }
+        )
     
     # Process request
     response = await call_next(request)
