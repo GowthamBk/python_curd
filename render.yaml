@@ -9,7 +9,9 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: MONGODB_URL
-        sync: false
+        value: mongodb+srv://node_curd:node_curd@cluster0.ahupn.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+      - key: DATABASE_NAME
+        value: student_db
       - key: SECRET_KEY
         sync: false
       - key: API_KEY
