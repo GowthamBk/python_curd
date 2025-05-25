@@ -8,7 +8,6 @@ from app.utils.database import connect_to_mongo, close_mongo_connection, get_db
 from app.utils.error_handlers import AppError
 from app.utils.security import verify_api_key, get_security_headers
 from app.core.config import settings
-from app.routes import course_routes, enrollment_routes, grade_routes, attendance_routes, payment_routes, notification_routes, report_routes, dashboard_routes
 import os
 from dotenv import load_dotenv
 from fastapi.openapi.utils import get_openapi
@@ -202,16 +201,6 @@ app.include_router(
     prefix=settings.API_V1_PREFIX,
     dependencies=[Depends(verify_api_key)]
 )
-
-# Include other routers
-app.include_router(course_routes.router, prefix=settings.API_V1_PREFIX)
-app.include_router(enrollment_routes.router, prefix=settings.API_V1_PREFIX)
-app.include_router(grade_routes.router, prefix=settings.API_V1_PREFIX)
-app.include_router(attendance_routes.router, prefix=settings.API_V1_PREFIX)
-app.include_router(payment_routes.router, prefix=settings.API_V1_PREFIX)
-app.include_router(notification_routes.router, prefix=settings.API_V1_PREFIX)
-app.include_router(report_routes.router, prefix=settings.API_V1_PREFIX)
-app.include_router(dashboard_routes.router, prefix=settings.API_V1_PREFIX)
 
 # Root endpoint - redirects to API documentation
 @app.get("/", tags=["Root"])
