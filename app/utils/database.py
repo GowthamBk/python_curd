@@ -3,6 +3,7 @@ from typing import Optional
 import os
 from dotenv import load_dotenv
 import logging
+import traceback
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -32,23 +33,30 @@ async def connect_to_mongo():
     global client, db
     try:
         if not MONGODB_URL:
-            raise ValueError("MONGODB_URL environment variable is not set")
+            error_msg = "MONGODB_URL environment variable is not set"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
             
         # Initialize MongoDB client
         logger.info("Attempting to connect to MongoDB...")
+        logger.info(f"Connection URL: {MONGODB_URL}")
+        logger.info(f"Database Name: {DATABASE_NAME}")
+        
         client = AsyncIOMotorClient(MONGODB_URL)
         
         # Access the specified database
         db = client[DATABASE_NAME]
         
         # Verify the connection by sending a ping command
+        logger.info("Sending ping command to verify connection...")
         await db.command('ping')
         logger.info("Successfully connected to MongoDB!")
         
     except Exception as e:
-        logger.error(f"Error connecting to MongoDB: {str(e)}")
+        error_msg = f"Error connecting to MongoDB: {str(e)}\n{traceback.format_exc()}"
+        logger.error(error_msg)
         logger.error(f"Connection details - URL: {MONGODB_URL}, Database: {DATABASE_NAME}")
-        raise e
+        raise Exception(error_msg)
 
 async def close_mongo_connection():
     """Close database connection."""
@@ -58,8 +66,9 @@ async def close_mongo_connection():
             client.close()
             logger.info("MongoDB connection closed.")
     except Exception as e:
-        logger.error(f"Error closing MongoDB connection: {str(e)}")
-        raise e
+        error_msg = f"Error closing MongoDB connection: {str(e)}\n{traceback.format_exc()}"
+        logger.error(error_msg)
+        raise Exception(error_msg)
 
 async def get_db():
     """Get database instance."""
@@ -70,5 +79,6 @@ async def get_db():
             await connect_to_mongo()
         return db
     except Exception as e:
-        logger.error(f"Error getting database instance: {str(e)}")
-        raise e
+        error_msg = f"Error getting database instance: {str(e)}\n{traceback.format_exc()}"
+        logger.error(error_msg)
+        raise Exception(error_msg)
